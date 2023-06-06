@@ -11,7 +11,7 @@ defmodule TaxiBeWeb.TaxiAllocationJob do
     {:ok, %{request: request}}
   end
 
-  def handle_info(:step1, %{request: request}) do
+  def handle_info(:step1, %{request: request} = state) do
     upperPath = Task.async(fn ->
       compute_ride_fare(request)
       |> notify_customer_ride_fare()
@@ -20,22 +20,18 @@ defmodule TaxiBeWeb.TaxiAllocationJob do
     taxis = select_candidate_taxis(request)
     Task.await(upperPath)
 
+    state = exec_step2(state, taxis)
 
-    {:noreply, %{request: request}}
+    {:noreply, state}
+  end
+
+  def handle_info(:timeout, state) do
+    state = exec_step3(state)
+    {:noreply, state}
   end
 
   def handle_info({:step2, response}, state) do
-    # compute arrival time
-    time = Enum.take_random([3,5,7], 1) |> hd
 
-    # notify customer about
-    TaxiBeWeb.Endpoint.broadcast(
-      "customer:luciano",
-      "booking_request",
-       %{
-        msg: "Tu taxi llegará en #{time} minutos"
-       }
-    )
     {:noreply, state}
   end
 
@@ -43,6 +39,39 @@ defmodule TaxiBeWeb.TaxiAllocationJob do
     IO.inspect(response)
     Process.send(self(), {:step2, response}, [:nosuspend])
     {:noreply, state}
+  end
+
+  def handle_cast({:do_reject, response}, state) do
+    state = exec_step3(state)
+    {:noreply, state}
+  end
+
+
+  def exec_step2(%{request: request} = state, taxis) do
+    taxi = Enum.take_random(taxis, 1) |> hd()
+
+    %{
+      "pickup_address" => pickup_address,
+      "dropoff_address" => dropoff_address,
+      "booking_id" => booking_id
+    } = request
+    TaxiBeWeb.Endpoint.broadcast(
+      "driver:" <> taxi.nickname,
+      "booking_request",
+       %{
+         msg: "Viaje de '#{pickup_address}' a '#{dropoff_address}'",
+         bookingId: booking_id
+        })
+
+    time = Process.send_after(self(), :timeout, 30_000)
+    state |> Map.put(:contacted_taxis, [taxi]) |> Map.put(:candidate_taxis, taxis) |> Map.put(:timer, time)
+  end
+
+  def exec_step3(%{contacted_taxis: contacted, candidate_taxis: candidate} = state) do
+    remaining = Enum.filter(candidate, fn t -> t not in contacted end)
+    IO.inspect(remaining)
+
+    state
   end
 
   def compute_ride_fare(request) do
