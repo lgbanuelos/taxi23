@@ -32,6 +32,21 @@ defmodule TaxiBeWeb.TaxiAllocationJob do
     {:noreply, %{request: request, contacted_taxi: taxi}}
   end
 
+  def handle_info({:step2, response}, state) do
+    # compute arrival time
+    time = Enum.take_random([3,5,7], 1) |> hd
+
+    # notify customer about
+    TaxiBeWeb.Endpoint.broadcast(
+      "customer:luciano",
+      "booking_request",
+       %{
+        msg: "Tu taxi llegará en #{time} minutos"
+       }
+    )
+    {:noreply, state}
+  end
+
   def handle_cast({:do_accept, response}, state) do
     IO.inspect(response)
     Process.send(self(), {:step2, response}, [:nosuspend])
