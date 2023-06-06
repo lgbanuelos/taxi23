@@ -53,7 +53,24 @@ defmodule TaxiBeWeb.TaxiAllocationJob do
     {:noreply, state}
   end
 
-  def candidate_taxis() do
+  def compute_ride_fare(request) do
+    %{
+      "pickup_address" => pickup_address,
+      "dropoff_address" => dropoff_address
+     } = request
+
+    coord1 = TaxiBeWeb.Geolocator.geocode(pickup_address)
+    coord2 = TaxiBeWeb.Geolocator.geocode(dropoff_address)
+    {distance, _duration} = TaxiBeWeb.Geolocator.distance_and_duration(coord1, coord2)
+    {request, Float.ceil(distance/300)}
+  end
+
+  def notify_customer_ride_fare({request, fare}) do
+    %{"username" => customer} = request
+   TaxiBeWeb.Endpoint.broadcast("customer:" <> customer, "booking_request", %{msg: "Ride fare: #{fare}"})
+  end
+
+  def select_candidate_taxis(%{"pickup_address" => _pickup_address}) do
     [
       %{nickname: "frodo", latitude: 19.0319783, longitude: -98.2349368}, # Angelopolis
       %{nickname: "samwise", latitude: 19.0061167, longitude: -98.2697737}, # Arcangeles
