@@ -12,24 +12,16 @@ defmodule TaxiBeWeb.TaxiAllocationJob do
   end
 
   def handle_info(:step1, %{request: request}) do
-    # Select a taxi
-    taxi = Enum.take_random(candidate_taxis(), 1) |> hd()
+    upperPath = Task.async(fn ->
+      compute_ride_fare(request)
+      |> notify_customer_ride_fare()
+      end)
 
-    # Forward request to taxi driver
-    %{
-      "pickup_address" => pickup_address,
-      "dropoff_address" => dropoff_address,
-      "booking_id" => booking_id
-    } = request
-    TaxiBeWeb.Endpoint.broadcast(
-      "driver:" <> taxi.nickname,
-      "booking_request",
-       %{
-         msg: "Viaje de '#{pickup_address}' a '#{dropoff_address}'",
-         bookingId: booking_id
-        })
+    taxis = select_candidate_taxis(request)
+    Task.await(upperPath)
 
-    {:noreply, %{request: request, contacted_taxi: taxi}}
+
+    {:noreply, %{request: request}}
   end
 
   def handle_info({:step2, response}, state) do
@@ -62,7 +54,7 @@ defmodule TaxiBeWeb.TaxiAllocationJob do
     coord1 = TaxiBeWeb.Geolocator.geocode(pickup_address)
     coord2 = TaxiBeWeb.Geolocator.geocode(dropoff_address)
     {distance, _duration} = TaxiBeWeb.Geolocator.distance_and_duration(coord1, coord2)
-    {request, Float.ceil(distance/300)}
+    {request, Float.ceil(distance/70)}
   end
 
   def notify_customer_ride_fare({request, fare}) do

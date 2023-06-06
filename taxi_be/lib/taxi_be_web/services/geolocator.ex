@@ -22,7 +22,7 @@ defmodule TaxiBeWeb.Geolocator do
     end
   end
 
-  def distance_and_duration(origin_coord, destination_coord) do
+  def distance_and_duration({_, origin_coord}, {_, destination_coord}) do
     %{body: body} =
       HTTPoison.get!(
         @directionsURL <>
